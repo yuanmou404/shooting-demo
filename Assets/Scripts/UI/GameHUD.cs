@@ -627,6 +627,17 @@ namespace PixelArena
                 ol.effectDistance = new Vector2(cur ? 3f : 2f, cur ? -3f : -2f);
                 weaponRowBg[i] = img;
 
+                // 触屏：三行直接可点，点哪行切到哪把（上一把 / 当前 / 下一把），替掉原来的 GUN 按钮
+                if (GameInput.TouchMode)
+                {
+                    img.raycastTarget = true;
+                    var pick = row.gameObject.AddComponent<Button>();
+                    pick.transition = Selectable.Transition.None;
+                    int rowIdx = i;
+                    pick.onClick.AddListener(() => OnWeaponRowTap(rowIdx));
+                    MobileControls.RegisterBlocker(row.GetComponent<RectTransform>());   // 这里按下不当成转视角
+                }
+
                 // 左侧：数字键编号
                 var keyBg = NewImage(row, "SlotKey", cur ? new Color(0.98f, 0.80f, 0.36f, 0.92f) : new Color(0.26f, 0.30f, 0.38f, 0.65f),
                     new Vector2(42f, 42f), new Vector2(-122f, 0f));
@@ -646,9 +657,9 @@ namespace PixelArena
                 weaponRowName[i] = name;
             }
 
-            // 底部小字：怎么切（触屏端没有滚轮，指向 GUN 按钮）
+            // 底部小字：怎么切（触屏端直接点上面的行）
             var tip = Label(hudPanel.transform, "WeaponBarTip",
-                GameInput.TouchMode ? "点 GUN 按钮切枪" : "滚轮 / Q 切换", 22, cMuted, TextAnchor.MiddleCenter, fontXs);
+                GameInput.TouchMode ? "点击切换武器" : "滚轮 / Q 切换", 22, cMuted, TextAnchor.MiddleCenter, fontXs);
             Anchor(tip.rectTransform, WeaponBarX, -258f, 300f, 34f);
             tip.raycastTarget = false;
             FitText(tip, 260f, 22);
@@ -703,6 +714,32 @@ namespace PixelArena
                     FitText(weaponRowName[i], 208f, 26);
                 }
             }
+        }
+
+        /// <summary>
+        /// 触屏点武器栏：三行依次是「上一把 / 当前 / 下一把」，点哪行切到哪把。
+        /// 人在坦克里时这一栏换成主炮 / 同轴机枪，同样点哪行切哪件。
+        /// </summary>
+        private void OnWeaponRowTap(int rowIdx)
+        {
+            if (Gm == null) return;
+
+            if (Gm.TankMounted && Gm.Tank != null)
+            {
+                int tn = TankController.WeaponCount;
+                if (tn <= 0) return;
+                int tcur = Gm.Tank.WeaponIndex;
+                int t = rowIdx == 0 ? (tcur - 1 + tn) % tn : (rowIdx == 1 ? tcur : (tcur + 1) % tn);
+                Gm.Tank.SelectWeapon(t);
+                return;
+            }
+
+            if (Gm.Weapons == null) return;
+            int n = Gm.Weapons.WeaponCount;
+            if (n <= 0) return;
+            int cur = Gm.Weapons.DisplaySlot;
+            int s = rowIdx == 0 ? (cur - 1 + n) % n : (rowIdx == 1 ? cur : (cur + 1) % n);
+            Gm.Weapons.SelectSlot(s);
         }
 
         // ---------------------------------------------------------- 坦克舱内视角 UI
@@ -772,7 +809,7 @@ namespace PixelArena
             cockpitWeapon.raycastTarget = false;
 
             cockpitHint = Label(shell.transform, "CkHint",
-                GameInput.TouchMode ? "VIEW 切车外视角 · RIDE 下车 · GUN 换武器"
+                GameInput.TouchMode ? "VIEW 切车外视角 · RIDE 下车 · 点武器栏换武器"
                                     : "V 切车外视角 · E 下车 · 1 / 2 或滚轮 换武器",
                 22, new Color(0.70f, 0.74f, 0.62f), TextAnchor.MiddleLeft, fontXs);
             Anchor(cockpitHint.rectTransform, -620f, 430f, 700f, 36f);
@@ -1752,12 +1789,12 @@ namespace PixelArena
                 "装甲归零后进入 3 秒自爆倒计时（滴滴声越来越急），趁这 3 秒按 E（触屏 RIDE）跳车就能活，\n" +
                 "留在车里会跟着一起炸。炮击有自伤风险，别站在弹幕里。\n\n" +
                 "【安卓 / 触控】\n" +
-                "左下摇杆    移动（推到边缘自动冲刺；按住左半屏任意位置，摇杆会跟到拇指下）\n" +
-                "右下按钮    FIRE 开火 / AIM 开镜 / JUMP 跳跃 / RELOAD 换弹\n" +
-                "            GUN 切枪 / SLIDE 滑铲 / BUILD 建块 / VIEW 视角 / LOOK 检视\n" +
-                "左上按钮    SQUAD 小队召唤 / RIDE 上下坦克\n" +
-                "右半屏滑动  转视角（带轻微辅助瞄准）\n" +
-                "右上角 II   暂停\n\n" +
+                "左下摇杆       移动（推到边缘自动冲刺；按住左半屏任意位置，摇杆会跟到拇指下）\n" +
+                "右下 FIRE      开火 · 正上方换弹 · 左边跳跃 · 左上方开镜\n" +
+                "右上 II 左边   切换第一 / 三人称视角\n" +
+                "左上两键       SQUAD 小队召唤 / RIDE 上下坦克\n" +
+                "右侧武器栏     点击任意一行即可切换武器（上 / 中 / 下 = 上一把 / 当前 / 下一把）\n" +
+                "右半屏滑动     转视角（带轻微辅助瞄准）\n\n" +
                 "【武器】\n" +
                 "1 步枪 RIFLE   全自动，均衡，带红点瞄准镜\n" +
                 "2 霰弹 SHOTGUN 双管 + 木质泵动，近距离 9 颗弹丸高爆发\n" +
@@ -2095,7 +2132,7 @@ namespace PixelArena
                     string squadPart = Gm != null && Gm.HasSquad ? " · G 小队召唤 · E 上下坦克" : "";
                     string squadTouch = Gm != null && Gm.HasSquad ? " · SQUAD 召唤 · RIDE 坦克" : "";
                     hintText.text = GameInput.TouchMode
-                        ? "左下摇杆移动 · 右侧滑动转视角" + squadTouch + " · 右上角 II 暂停"
+                        ? "左下摇杆移动 · 右侧滑动转视角 · 点武器栏切枪" + squadTouch + " · 右上角 II 暂停"
                         : "WASD 移动 · 左键射击 · 右键开镜 · B 建块 · R 换弹 · 滚轮切枪 · 1~5 选武器 · V 切视角 · "
                           + "冲刺+Ctrl 滑铲" + squadPart + " · Esc 暂停";
                     hintText.color = new Color(0.64f, 0.70f, 0.80f, Mathf.Clamp01(hintTimer / 2f));

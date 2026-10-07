@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
@@ -23,9 +24,10 @@ namespace PixelArena
     }
 
     /// <summary>
-    /// 安卓 / iOS 触控操作：左下常驻虚拟摇杆移动（浮动跟随拇指），右侧滑动转视角，
-    /// 右下角战斗按钮群（FIRE/AIM/JUMP/RELOAD）+ 中部低频按钮 + 左上战术按钮。
-    /// UI 以 1920x1080 参考分辨率设计、随屏幕等比缩放，高分屏不再挤成一团。
+    /// 安卓 / iOS 触控操作：左下常驻浮动摇杆移动，右侧滑动转视角，
+    /// 右下角战斗键（FIRE / 正上方 RELOAD / 左侧 JUMP / 左上 AIM），
+    /// 右上角暂停键旁放切视角，左上放小队召唤与上下坦克。全部图标化，切枪走右侧武器栏点击。
+    /// UI 以 1920x1080 参考分辨率设计、随屏幕等比缩放。
     /// </summary>
     public class MobileControls : MonoBehaviour
     {
@@ -34,13 +36,23 @@ namespace PixelArena
         public Image JoystickKnob;
         public HoldButton FireButton;
 
-        private HoldButton jumpBtn, reloadBtn, switchBtn, viewBtn, buildBtn, inspectBtn, aimBtn;
-        private HoldButton squadBtn, mountBtn, slideBtn;   // SQUAD 召唤面板 / RIDE 上下坦克 / SLIDE 滑铲
+        private HoldButton jumpBtn, reloadBtn, viewBtn, aimBtn;
+        private HoldButton squadBtn, mountBtn;   // 小队召唤 / 上下坦克
         private RectTransform[] buttonRects;
         private int moveFinger = -1;
         private Vector2 joystickCenter;                    // 摇杆当前中心（Canvas 坐标）
         private const float JoyRadius = 120f;
         private static readonly Vector2 JoyHome = new Vector2(230f, 230f);   // 摇杆待机位（Canvas 坐标，左下原点）
+
+        /// <summary>由 HUD 注册的可点击区域（如武器栏）：这些区域内不触发转视角。</summary>
+        private static readonly List<RectTransform> ExtraBlockers = new List<RectTransform>();
+
+        public static void RegisterBlocker(RectTransform rt)
+        {
+            if (rt == null) return;
+            if (ExtraBlockers.Contains(rt)) return;
+            ExtraBlockers.Add(rt);
+        }
 
         public static MobileControls Create()
         {
@@ -65,19 +77,17 @@ namespace PixelArena
             Canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             Canvas.sortingOrder = 200;
             var scaler = canvasGo.AddComponent<CanvasScaler>();
-            // 关键修复：此前用 ConstantPixelSize，在 2400x1080 手机上所有按钮按原始像素排布，
-            // 全部挤在屏幕左侧 1/3（右边大片空白）。改为 1920x1080 参考分辨率等比缩放。
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
             scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = 0.5f;
             canvasGo.AddComponent<GraphicRaycaster>();
 
-            // 摇杆：常驻显示在左下待机位；按住左半屏任意位置时，底盘跟到拇指下（浮动摇杆）
+            // 摇杆：常驻在左下待机位；按住左半屏任意位置时底盘跟到拇指下
             var baseGo = new GameObject("JoystickBase");
             baseGo.transform.SetParent(canvasGo.transform, false);
             JoystickBase = baseGo.AddComponent<Image>();
-            JoystickBase.color = new Color(1f, 1f, 1f, 0.18f);
+            JoystickBase.color = new Color(1f, 1f, 1f, 0.16f);
             var brt = baseGo.GetComponent<RectTransform>();
             brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.zero;
             brt.sizeDelta = new Vector2(JoyRadius * 2f, JoyRadius * 2f);
@@ -86,43 +96,42 @@ namespace PixelArena
             var knobGo = new GameObject("Knob");
             knobGo.transform.SetParent(baseGo.transform, false);
             JoystickKnob = knobGo.AddComponent<Image>();
-            JoystickKnob.color = new Color(1f, 1f, 1f, 0.45f);
+            JoystickKnob.color = new Color(1f, 1f, 1f, 0.42f);
             knobGo.GetComponent<RectTransform>().sizeDelta = new Vector2(86f, 86f);
 
-            // ---- 右下战斗群（避开 HUD：弹药 x≥1450 y≤152、武器栏 x≥1610 y≥265，均为 1920x1080 系）----
-            FireButton = MakeButton(canvasGo.transform, "BtnFire", "FIRE", new Vector2(1310f, 210f), new Vector2(205f, 205f), new Color(0.85f, 0.25f, 0.22f, 0.55f));
-            aimBtn     = MakeButton(canvasGo.transform, "BtnAim", "AIM", new Vector2(1095f, 200f), new Vector2(145f, 145f), new Color(0.30f, 0.52f, 0.52f, 0.5f));
-            jumpBtn    = MakeButton(canvasGo.transform, "BtnJump", "JUMP", new Vector2(1310f, 490f), new Vector2(145f, 145f), new Color(0.25f, 0.55f, 0.85f, 0.5f));
-            reloadBtn  = MakeButton(canvasGo.transform, "BtnReload", "RELOAD", new Vector2(1095f, 480f), new Vector2(130f, 130f), new Color(0.35f, 0.45f, 0.35f, 0.5f));
+            // ---- 右下战斗键（避开 HUD：弹药 x≥1450 y≤152、武器栏 x≥1610 y≥265）----
+            FireButton = MakeButton(canvasGo.transform, "BtnFire", new Vector2(1310f, 210f), new Vector2(205f, 205f),
+                new Color(0.85f, 0.25f, 0.22f, 0.55f), IconSprites.Fire());
+            reloadBtn = MakeButton(canvasGo.transform, "BtnReload", new Vector2(1310f, 500f), new Vector2(150f, 150f),
+                new Color(0.35f, 0.45f, 0.35f, 0.5f), IconSprites.Reload());      // 换弹在开火键正上方
+            jumpBtn = MakeButton(canvasGo.transform, "BtnJump", new Vector2(1090f, 200f), new Vector2(150f, 150f),
+                new Color(0.25f, 0.55f, 0.85f, 0.5f), IconSprites.Jump());
+            aimBtn = MakeButton(canvasGo.transform, "BtnAim", new Vector2(1090f, 470f), new Vector2(140f, 140f),
+                new Color(0.30f, 0.52f, 0.52f, 0.5f), IconSprites.Aim());
 
-            // ---- 中列：切枪 / 建块 / 视角（中低频，竖排往上看一眼再点）----
-            switchBtn  = MakeButton(canvasGo.transform, "BtnSwitch", "GUN", new Vector2(890f, 200f), new Vector2(120f, 120f), new Color(0.45f, 0.40f, 0.55f, 0.5f));
-            buildBtn   = MakeButton(canvasGo.transform, "BtnBuild", "BUILD", new Vector2(890f, 455f), new Vector2(115f, 115f), new Color(0.60f, 0.50f, 0.25f, 0.5f));
-            viewBtn    = MakeButton(canvasGo.transform, "BtnView", "VIEW", new Vector2(890f, 665f), new Vector2(110f, 110f), new Color(0.40f, 0.50f, 0.40f, 0.5f));
-            inspectBtn = MakeButton(canvasGo.transform, "BtnInspect", "LOOK", new Vector2(890f, 860f), new Vector2(110f, 110f), new Color(0.45f, 0.35f, 0.50f, 0.5f));
-            slideBtn   = MakeButton(canvasGo.transform, "BtnSlide", "SLIDE", new Vector2(1095f, 680f), new Vector2(125f, 125f), new Color(0.55f, 0.45f, 0.28f, 0.5f));
+            // ---- 右上角：切视角放在暂停键（HUD 的 II，x 1802~1898 y 982~1078）左边 ----
+            viewBtn = MakeButton(canvasGo.transform, "BtnView", new Vector2(1700f, 1030f), new Vector2(96f, 96f),
+                new Color(0.40f, 0.50f, 0.40f, 0.5f), IconSprites.View());
 
-            // ---- 左上战术按钮（避开积分卡 x≤500 与队友血量行）----
-            squadBtn   = MakeButton(canvasGo.transform, "BtnSquad", "SQUAD", new Vector2(620f, 915f), new Vector2(130f, 130f), new Color(0.20f, 0.55f, 0.70f, 0.5f));
-            mountBtn   = MakeButton(canvasGo.transform, "BtnMount", "RIDE", new Vector2(620f, 755f), new Vector2(120f, 120f), new Color(0.80f, 0.50f, 0.20f, 0.5f));
+            // ---- 左上战术键（避开积分卡 x≤500 与队友血量行）----
+            squadBtn = MakeButton(canvasGo.transform, "BtnSquad", new Vector2(620f, 915f), new Vector2(130f, 130f),
+                new Color(0.20f, 0.55f, 0.70f, 0.5f), IconSprites.Squad());
+            mountBtn = MakeButton(canvasGo.transform, "BtnMount", new Vector2(620f, 755f), new Vector2(120f, 120f),
+                new Color(0.80f, 0.50f, 0.20f, 0.5f), IconSprites.Ride());
 
             buttonRects = new[]
             {
                 FireButton.GetComponent<RectTransform>(),
-                jumpBtn.GetComponent<RectTransform>(),
                 reloadBtn.GetComponent<RectTransform>(),
-                switchBtn.GetComponent<RectTransform>(),
-                viewBtn.GetComponent<RectTransform>(),
-                buildBtn.GetComponent<RectTransform>(),
-                inspectBtn.GetComponent<RectTransform>(),
+                jumpBtn.GetComponent<RectTransform>(),
                 aimBtn.GetComponent<RectTransform>(),
+                viewBtn.GetComponent<RectTransform>(),
                 squadBtn.GetComponent<RectTransform>(),
-                mountBtn.GetComponent<RectTransform>(),
-                slideBtn.GetComponent<RectTransform>()
+                mountBtn.GetComponent<RectTransform>()
             };
         }
 
-        private HoldButton MakeButton(Transform parent, string name, string label, Vector2 pos, Vector2 size, Color color)
+        private HoldButton MakeButton(Transform parent, string name, Vector2 pos, Vector2 size, Color color, Sprite icon)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -134,18 +143,21 @@ namespace PixelArena
             rt.sizeDelta = size;
             var btn = go.AddComponent<HoldButton>();
 
-            var textGo = new GameObject("Label");
-            textGo.transform.SetParent(go.transform, false);
-            var t = textGo.AddComponent<Text>();
-            t.text = label;
-            // 字号随按钮尺寸缩放（1920x1080 参考系下自动适配高分屏）
-            t.fontSize = Mathf.Max(16, Mathf.RoundToInt(size.x * 0.155f));
-            t.color = Color.white;
-            t.alignment = TextAnchor.MiddleCenter;
-            t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            var trt = t.rectTransform;
-            trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
-            trt.offsetMin = Vector2.zero; trt.offsetMax = Vector2.zero;
+            if (icon != null)
+            {
+                // 图标：按钮内居中，占 58%，白色由父级 Image 之外的自身 color 决定
+                var icoGo = new GameObject("Icon");
+                icoGo.transform.SetParent(go.transform, false);
+                var ico = icoGo.AddComponent<Image>();
+                ico.sprite = icon;
+                ico.color = new Color(1f, 1f, 1f, 0.95f);
+                ico.raycastTarget = false;
+                var irt = ico.GetComponent<RectTransform>();
+                irt.anchorMin = new Vector2(0.5f, 0.5f); irt.anchorMax = new Vector2(0.5f, 0.5f);
+                irt.anchoredPosition = Vector2.zero;
+                float s = Mathf.Min(size.x, size.y) * 0.58f;
+                irt.sizeDelta = new Vector2(s, s);
+            }
             return btn;
         }
 
@@ -178,8 +190,7 @@ namespace PixelArena
                     Vector2 d = p - joystickCenter;
                     float len = d.magnitude;
                     if (len > JoyRadius) d = d / len * JoyRadius;
-                    Vector2 axis = d / JoyRadius;
-                    GameInput.TouchMoveAxis = axis;
+                    GameInput.TouchMoveAxis = d / JoyRadius;
                     GameInput.TouchSprint = len > JoyRadius * 0.92f;
                     JoystickKnob.rectTransform.anchoredPosition = d;
                     moveActive = true;
@@ -198,7 +209,7 @@ namespace PixelArena
                     }
                 }
 
-                // 右侧拖动 = 转视角（不包含按钮区域与移动摇杆；delta 用屏幕像素，灵敏度与旧版一致）
+                // 右侧拖动 = 转视角（排除按钮、排除 HUD 注册的可点区域；delta 用屏幕像素，灵敏度不变）
                 if (touch.fingerId != moveFinger && !IsOverButton(touch.position) && touch.position.x >= w * 0.35f)
                 {
                     GameInput.TouchLookDelta += touch.deltaPosition;
@@ -213,14 +224,16 @@ namespace PixelArena
             GameInput.TouchFire = FireButton.Held;
             GameInput.TouchJump = jumpBtn.Held;
             GameInput.TouchReload = TakeTap(reloadBtn);
-            GameInput.TouchNextWeapon = TakeTap(switchBtn);
-            GameInput.TouchToggleView = TakeTap(viewBtn);
-            GameInput.TouchPlace = buildBtn.Held;
-            GameInput.TouchInspect = TakeTap(inspectBtn);
             GameInput.TouchAim = aimBtn.Held;
+            GameInput.TouchToggleView = TakeTap(viewBtn);
             GameInput.TouchCallIn = TakeTap(squadBtn);
             GameInput.TouchInteract = TakeTap(mountBtn);
-            GameInput.TouchSlide = TakeTap(slideBtn);
+
+            // 这几个动作触屏上不再给按钮（建块 / 滑铲 / 检视 / 切枪），切枪改为点右侧武器栏
+            GameInput.TouchNextWeapon = false;
+            GameInput.TouchPlace = false;
+            GameInput.TouchSlide = false;
+            GameInput.TouchInspect = false;
         }
 
         private bool TakeTap(HoldButton b)
@@ -235,11 +248,19 @@ namespace PixelArena
 
         private bool IsOverButton(Vector2 screenPos)
         {
-            if (buttonRects == null) return false;
             Camera cam = Canvas.renderMode == RenderMode.ScreenSpaceOverlay ? null : Canvas.worldCamera;
-            for (int i = 0; i < buttonRects.Length; i++)
+            if (buttonRects != null)
             {
-                if (RectTransformUtility.RectangleContainsScreenPoint(buttonRects[i], screenPos, cam)) return true;
+                for (int i = 0; i < buttonRects.Length; i++)
+                {
+                    if (buttonRects[i] != null && RectTransformUtility.RectangleContainsScreenPoint(buttonRects[i], screenPos, cam))
+                        return true;
+                }
+            }
+            for (int i = 0; i < ExtraBlockers.Count; i++)
+            {
+                if (ExtraBlockers[i] != null && RectTransformUtility.RectangleContainsScreenPoint(ExtraBlockers[i], screenPos, cam))
+                    return true;
             }
             return false;
         }
