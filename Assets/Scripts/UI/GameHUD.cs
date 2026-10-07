@@ -569,7 +569,8 @@ namespace PixelArena
 
             // ---- 开局操作提示
             hintText = Label(hudPanel.transform, "Hint", "", 26, cMuted, TextAnchor.MiddleCenter, fontXs);
-            Anchor(hintText.rectTransform, 0f, -300f, 1600f, 50f);
+            // 触屏端右下是按钮群，提示条压低到血条上方，避免和 FIRE 按钮重叠
+            Anchor(hintText.rectTransform, GameInput.TouchMode ? -150f : 0f, GameInput.TouchMode ? -420f : -300f, 1600f, 50f);
             hintText.raycastTarget = false;
 
             // ---- 右上角暂停按钮（移动端没有 Esc）
@@ -645,8 +646,9 @@ namespace PixelArena
                 weaponRowName[i] = name;
             }
 
-            // 底部小字：怎么切
-            var tip = Label(hudPanel.transform, "WeaponBarTip", "滚轮 / Q 切换", 22, cMuted, TextAnchor.MiddleCenter, fontXs);
+            // 底部小字：怎么切（触屏端没有滚轮，指向 GUN 按钮）
+            var tip = Label(hudPanel.transform, "WeaponBarTip",
+                GameInput.TouchMode ? "点 GUN 按钮切枪" : "滚轮 / Q 切换", 22, cMuted, TextAnchor.MiddleCenter, fontXs);
             Anchor(tip.rectTransform, WeaponBarX, -258f, 300f, 34f);
             tip.raycastTarget = false;
             FitText(tip, 260f, 22);
@@ -769,7 +771,9 @@ namespace PixelArena
             Anchor(cockpitWeapon.rectTransform, 0f, botY - 70f, 720f, 44f);
             cockpitWeapon.raycastTarget = false;
 
-            cockpitHint = Label(shell.transform, "CkHint", "V 切车外视角 · E 下车 · 1 / 2 或滚轮 换武器",
+            cockpitHint = Label(shell.transform, "CkHint",
+                GameInput.TouchMode ? "VIEW 切车外视角 · RIDE 下车 · GUN 换武器"
+                                    : "V 切车外视角 · E 下车 · 1 / 2 或滚轮 换武器",
                 22, new Color(0.70f, 0.74f, 0.62f), TextAnchor.MiddleLeft, fontXs);
             Anchor(cockpitHint.rectTransform, -620f, 430f, 700f, 36f);
             cockpitHint.raycastTarget = false;
@@ -861,7 +865,8 @@ namespace PixelArena
             Anchor(squadValue.rectTransform, 0f, -14f, 340f, 56f);
             squadValue.raycastTarget = false;
 
-            var tip = Label(root, "SquadTip", "G 键 打开小队召唤", 24, cMuted, TextAnchor.MiddleCenter, fontXs);
+            var tip = Label(root, "SquadTip",
+                GameInput.TouchMode ? "SQUAD 按钮 打开小队召唤" : "G 键 打开小队召唤", 24, cMuted, TextAnchor.MiddleCenter, fontXs);
             Anchor(tip.rectTransform, -640f, 328f, 360f, 38f);
             FitText(tip, 340f, 24);
             tip.raycastTarget = false;
@@ -980,7 +985,9 @@ namespace PixelArena
                 callInCost[i] = cost;
             }
 
-            var hint = Label(card, "CallInHint", "数字键 1~4 或点击选择 · G / Esc 关闭", 24, cMuted, TextAnchor.MiddleCenter, fontXs);
+            var hint = Label(card, "CallInHint",
+                GameInput.TouchMode ? "点击条目选择 · 右侧按钮关闭" : "数字键 1~4 或点击选择 · G / Esc 关闭",
+                24, cMuted, TextAnchor.MiddleCenter, fontXs);
             Anchor(hint.rectTransform, -120f, -252f, 620f, 36f);
             FitText(hint, 600f, 24);
             hint.raycastTarget = false;
@@ -1414,7 +1421,9 @@ namespace PixelArena
             FitText(sub, 980f, 24);
 
             AddModeRow(card.transform, 0, "小队模式  SQUAD",
-                "3 名 AI 队友随行推进 · 击杀攒小队积分 · G 键召唤轰炸 / 喷火器 / 加特林 / 坦克",
+                GameInput.TouchMode
+                    ? "3 名 AI 队友随行推进 · 击杀攒小队积分 · SQUAD 按钮召唤轰炸 / 喷火器 / 加特林 / 坦克"
+                    : "3 名 AI 队友随行推进 · 击杀攒小队积分 · G 键召唤轰炸 / 喷火器 / 加特林 / 坦克",
                 new Color(0.16f, 0.38f, 0.30f, 0.95f), new Color(0.45f, 0.90f, 0.95f),
                 () => { if (Gm != null) { ShowModeSelect(false); Gm.StartGame(GameMode.Squad); } });
 
@@ -1621,7 +1630,10 @@ namespace PixelArena
                 if (Gm != null) Gm.ReturnToMenu();
             }, 32, fontMd);
 
-            var hint = Label(card, "Hint", "按 Esc 继续游戏 · 设置里可调整分辨率与帧率", 24, cMuted, TextAnchor.MiddleCenter, fontXs);
+            var hint = Label(card, "Hint",
+                GameInput.TouchMode ? "点右上角 II 可随时暂停 · 设置里可调整帧率"
+                                    : "按 Esc 继续游戏 · 设置里可调整分辨率与帧率",
+                24, cMuted, TextAnchor.MiddleCenter, fontXs);
             Anchor(hint.rectTransform, 0f, -425f, 880f, 40f);
             FitText(hint, 860f, 24);
         }
@@ -1719,31 +1731,32 @@ namespace PixelArena
                 "【两种模式】\n" +
                 "点“开始游戏”后先选模式：\n" +
                 "· 小队模式 SQUAD        3 名 AI 队友随行、有头顶名字牌、位置显示在小地图上；\n" +
-                "                        击杀攒小队积分，按 G 花分召唤支援。\n" +
+                "                        击杀攒小队积分，按 G（触屏 SQUAD 按钮）花分召唤支援。\n" +
                 "· 单人突击模式 SOLO     孤狼作战，没有队友、没有小队积分和召唤，纯枪法与地形。\n\n" +
                 "【小队系统】（仅小队模式）\n" +
                 "3 名队友会跟着你推进并自主交火，头顶有名字牌（看到名字的一定是自己人），\n" +
                 "小地图上用青色箭头显示他们的位置和朝向；阵亡 18 秒后在附近归队。\n" +
-                "击杀攒小队积分（队友击杀打 6 折），按 G 花分召唤：\n" +
+                "击杀攒小队积分（队友击杀打 6 折），按 G（触屏 SQUAD 按钮）花分召唤：\n" +
                 "  1 区域轰炸 600 分   以准星落点为圆心，14 发炮弹覆盖约 9 米\n" +
                 "  2 喷火器   350 分   下发 60 秒，近距离扇形火焰持续灼烧\n" +
                 "  3 加特林   500 分   下发 60 秒，枪管预热后高射速，但移动变慢\n" +
-                "  4 坦克    1200 分   空投一辆坦克，走到车边按 E 登乘\n" +
-                "坦克：WASD 驾驶（A/D 转向）、鼠标转炮塔、左键开火，滚轮 / Q / 数字键 1、2 换武器。\n" +
+                "  4 坦克    1200 分   空投一辆坦克，走到车边按 E（触屏 RIDE）登乘\n" +
+                "坦克：WASD 驾驶（A/D 转向）、鼠标转炮塔、左键开火，滚轮 / Q / 数字键 1、2（触屏 GUN）换武器。\n" +
                 "  1 主炮 CANNON     爆破弹，碰到敌人（1.2 米内近炸）或方块就在那一点起爆，范围 7 米\n" +
                 "  2 同轴机枪 MG     按住左键连发，只打敌人、不拆地形\n" +
                 "主炮直击可以一炮带走步兵 / 突击兵 / 重装兵，精英兵吃满也还剩一口气，需要补一发。\n" +
-                "车外视角地面上会画出炮弹落点（橙色=就绪、灰色=装填中）；V 键可切进舱内第一人称，\n" +
+                "车外视角地面上会画出炮弹落点（橙色=就绪、灰色=装填中）；V 键（触屏 VIEW）可切进舱内第一人称，\n" +
                 "舱内有独立的观察窗 UI 与炮镜准星（再按 V 回到车外）。\n" +
                 "坦克有自己的装甲条（和你的血量完全分开），人在车里挨打只掉装甲、人物一滴血不掉；\n" +
                 "履带碾过任何敌人都是直接碾死（精英兵也不例外），碾死照样记分。\n" +
-                "装甲归零后进入 3 秒自爆倒计时（滴滴声越来越急），趁这 3 秒按 E 跳车就能活，\n" +
+                "装甲归零后进入 3 秒自爆倒计时（滴滴声越来越急），趁这 3 秒按 E（触屏 RIDE）跳车就能活，\n" +
                 "留在车里会跟着一起炸。炮击有自伤风险，别站在弹幕里。\n\n" +
                 "【安卓 / 触控】\n" +
-                "左半屏拖动  虚拟摇杆移动（推到边缘自动冲刺）\n" +
+                "左下摇杆    移动（推到边缘自动冲刺；按住左半屏任意位置，摇杆会跟到拇指下）\n" +
+                "右下按钮    FIRE 开火 / AIM 开镜 / JUMP 跳跃 / RELOAD 换弹\n" +
+                "            GUN 切枪 / SLIDE 滑铲 / BUILD 建块 / VIEW 视角 / LOOK 检视\n" +
+                "左上按钮    SQUAD 小队召唤 / RIDE 上下坦克\n" +
                 "右半屏滑动  转视角（带轻微辅助瞄准）\n" +
-                "右下按钮    FIRE 开火 / JUMP 跳跃 / RELOAD 换弹 / BUILD 建块 / GUN 切枪\n" +
-                "            AIM 开镜 / VIEW 视角 / LOOK 检视\n" +
                 "右上角 II   暂停\n\n" +
                 "【武器】\n" +
                 "1 步枪 RIFLE   全自动，均衡，带红点瞄准镜\n" +
@@ -2080,8 +2093,9 @@ namespace PixelArena
                 if (hintText != null)
                 {
                     string squadPart = Gm != null && Gm.HasSquad ? " · G 小队召唤 · E 上下坦克" : "";
+                    string squadTouch = Gm != null && Gm.HasSquad ? " · SQUAD 召唤 · RIDE 坦克" : "";
                     hintText.text = GameInput.TouchMode
-                        ? "左半屏拖动移动 · 右半屏滑动转视角 · 右上角 II 暂停"
+                        ? "左下摇杆移动 · 右侧滑动转视角" + squadTouch + " · 右上角 II 暂停"
                         : "WASD 移动 · 左键射击 · 右键开镜 · B 建块 · R 换弹 · 滚轮切枪 · 1~5 选武器 · V 切视角 · "
                           + "冲刺+Ctrl 滑铲" + squadPart + " · Esc 暂停";
                     hintText.color = new Color(0.64f, 0.70f, 0.80f, Mathf.Clamp01(hintTimer / 2f));

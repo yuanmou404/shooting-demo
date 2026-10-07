@@ -23,7 +23,9 @@ namespace PixelArena
     }
 
     /// <summary>
-    /// 安卓 / iOS 触控操作：左侧浮动摇杆移动，右侧滑动转视角，右下角按钮开火/跳跃/换弹/切枪/切视角/建块。
+    /// 安卓 / iOS 触控操作：左下常驻虚拟摇杆移动（浮动跟随拇指），右侧滑动转视角，
+    /// 右下角战斗按钮群（FIRE/AIM/JUMP/RELOAD）+ 中部低频按钮 + 左上战术按钮。
+    /// UI 以 1920x1080 参考分辨率设计、随屏幕等比缩放，高分屏不再挤成一团。
     /// </summary>
     public class MobileControls : MonoBehaviour
     {
@@ -36,8 +38,9 @@ namespace PixelArena
         private HoldButton squadBtn, mountBtn, slideBtn;   // SQUAD 召唤面板 / RIDE 上下坦克 / SLIDE 滑铲
         private RectTransform[] buttonRects;
         private int moveFinger = -1;
-        private Vector2 joystickCenter;
-        private const float JoyRadius = 110f;
+        private Vector2 joystickCenter;                    // 摇杆当前中心（Canvas 坐标）
+        private const float JoyRadius = 120f;
+        private static readonly Vector2 JoyHome = new Vector2(230f, 230f);   // 摇杆待机位（Canvas 坐标，左下原点）
 
         public static MobileControls Create()
         {
@@ -62,40 +65,46 @@ namespace PixelArena
             Canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             Canvas.sortingOrder = 200;
             var scaler = canvasGo.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+            // 关键修复：此前用 ConstantPixelSize，在 2400x1080 手机上所有按钮按原始像素排布，
+            // 全部挤在屏幕左侧 1/3（右边大片空白）。改为 1920x1080 参考分辨率等比缩放。
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+            scaler.matchWidthOrHeight = 0.5f;
             canvasGo.AddComponent<GraphicRaycaster>();
 
-            // 摇杆
+            // 摇杆：常驻显示在左下待机位；按住左半屏任意位置时，底盘跟到拇指下（浮动摇杆）
             var baseGo = new GameObject("JoystickBase");
             baseGo.transform.SetParent(canvasGo.transform, false);
             JoystickBase = baseGo.AddComponent<Image>();
-            JoystickBase.color = new Color(1f, 1f, 1f, 0.16f);
+            JoystickBase.color = new Color(1f, 1f, 1f, 0.18f);
             var brt = baseGo.GetComponent<RectTransform>();
             brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.zero;
             brt.sizeDelta = new Vector2(JoyRadius * 2f, JoyRadius * 2f);
-            brt.anchoredPosition = new Vector2(180f, 180f);
-            baseGo.SetActive(false);
+            brt.anchoredPosition = JoyHome;
 
             var knobGo = new GameObject("Knob");
             knobGo.transform.SetParent(baseGo.transform, false);
             JoystickKnob = knobGo.AddComponent<Image>();
-            JoystickKnob.color = new Color(1f, 1f, 1f, 0.42f);
-            knobGo.GetComponent<RectTransform>().sizeDelta = new Vector2(80f, 80f);
+            JoystickKnob.color = new Color(1f, 1f, 1f, 0.45f);
+            knobGo.GetComponent<RectTransform>().sizeDelta = new Vector2(86f, 86f);
 
-            // 按钮
-            FireButton = MakeButton(canvasGo.transform, "BtnFire", "FIRE", new Vector2(190f, 190f), new Vector2(200f, 200f), new Color(0.85f, 0.25f, 0.22f, 0.55f));
-            jumpBtn = MakeButton(canvasGo.transform, "BtnJump", "JUMP", new Vector2(150f, 400f), new Vector2(150f, 150f), new Color(0.25f, 0.55f, 0.85f, 0.5f));
-            reloadBtn = MakeButton(canvasGo.transform, "BtnReload", "RELOAD", new Vector2(350f, 330f), new Vector2(140f, 140f), new Color(0.35f, 0.45f, 0.35f, 0.5f));
-            switchBtn = MakeButton(canvasGo.transform, "BtnSwitch", "GUN", new Vector2(350f, 170f), new Vector2(140f, 140f), new Color(0.45f, 0.40f, 0.55f, 0.5f));
-            viewBtn = MakeButton(canvasGo.transform, "BtnView", "VIEW", new Vector2(520f, 330f), new Vector2(130f, 130f), new Color(0.40f, 0.50f, 0.40f, 0.5f));
-            buildBtn = MakeButton(canvasGo.transform, "BtnBuild", "BUILD", new Vector2(520f, 175f), new Vector2(130f, 130f), new Color(0.60f, 0.50f, 0.25f, 0.5f));
-            inspectBtn = MakeButton(canvasGo.transform, "BtnInspect", "LOOK", new Vector2(680f, 330f), new Vector2(130f, 130f), new Color(0.45f, 0.35f, 0.50f, 0.5f));
-            aimBtn = MakeButton(canvasGo.transform, "BtnAim", "AIM", new Vector2(680f, 175f), new Vector2(130f, 130f), new Color(0.30f, 0.52f, 0.52f, 0.5f));
+            // ---- 右下战斗群（避开 HUD：弹药 x≥1450 y≤152、武器栏 x≥1610 y≥265，均为 1920x1080 系）----
+            FireButton = MakeButton(canvasGo.transform, "BtnFire", "FIRE", new Vector2(1310f, 210f), new Vector2(205f, 205f), new Color(0.85f, 0.25f, 0.22f, 0.55f));
+            aimBtn     = MakeButton(canvasGo.transform, "BtnAim", "AIM", new Vector2(1095f, 200f), new Vector2(145f, 145f), new Color(0.30f, 0.52f, 0.52f, 0.5f));
+            jumpBtn    = MakeButton(canvasGo.transform, "BtnJump", "JUMP", new Vector2(1310f, 490f), new Vector2(145f, 145f), new Color(0.25f, 0.55f, 0.85f, 0.5f));
+            reloadBtn  = MakeButton(canvasGo.transform, "BtnReload", "RELOAD", new Vector2(1095f, 480f), new Vector2(130f, 130f), new Color(0.35f, 0.45f, 0.35f, 0.5f));
 
-            // 第十一~十四轮新功能的触屏入口：召唤面板、上下坦克、滑铲
-            squadBtn = MakeButton(canvasGo.transform, "BtnSquad", "SQUAD", new Vector2(350f, 475f), new Vector2(140f, 140f), new Color(0.20f, 0.55f, 0.70f, 0.5f));
-            mountBtn = MakeButton(canvasGo.transform, "BtnMount", "RIDE", new Vector2(150f, 580f), new Vector2(130f, 130f), new Color(0.80f, 0.50f, 0.20f, 0.5f));
-            slideBtn = MakeButton(canvasGo.transform, "BtnSlide", "SLIDE", new Vector2(680f, 475f), new Vector2(130f, 130f), new Color(0.55f, 0.45f, 0.28f, 0.5f));
+            // ---- 中列：切枪 / 建块 / 视角（中低频，竖排往上看一眼再点）----
+            switchBtn  = MakeButton(canvasGo.transform, "BtnSwitch", "GUN", new Vector2(890f, 200f), new Vector2(120f, 120f), new Color(0.45f, 0.40f, 0.55f, 0.5f));
+            buildBtn   = MakeButton(canvasGo.transform, "BtnBuild", "BUILD", new Vector2(890f, 455f), new Vector2(115f, 115f), new Color(0.60f, 0.50f, 0.25f, 0.5f));
+            viewBtn    = MakeButton(canvasGo.transform, "BtnView", "VIEW", new Vector2(890f, 665f), new Vector2(110f, 110f), new Color(0.40f, 0.50f, 0.40f, 0.5f));
+            inspectBtn = MakeButton(canvasGo.transform, "BtnInspect", "LOOK", new Vector2(890f, 860f), new Vector2(110f, 110f), new Color(0.45f, 0.35f, 0.50f, 0.5f));
+            slideBtn   = MakeButton(canvasGo.transform, "BtnSlide", "SLIDE", new Vector2(1095f, 680f), new Vector2(125f, 125f), new Color(0.55f, 0.45f, 0.28f, 0.5f));
+
+            // ---- 左上战术按钮（避开积分卡 x≤500 与队友血量行）----
+            squadBtn   = MakeButton(canvasGo.transform, "BtnSquad", "SQUAD", new Vector2(620f, 915f), new Vector2(130f, 130f), new Color(0.20f, 0.55f, 0.70f, 0.5f));
+            mountBtn   = MakeButton(canvasGo.transform, "BtnMount", "RIDE", new Vector2(620f, 755f), new Vector2(120f, 120f), new Color(0.80f, 0.50f, 0.20f, 0.5f));
 
             buttonRects = new[]
             {
@@ -129,7 +138,8 @@ namespace PixelArena
             textGo.transform.SetParent(go.transform, false);
             var t = textGo.AddComponent<Text>();
             t.text = label;
-            t.fontSize = 30;
+            // 字号随按钮尺寸缩放（1920x1080 参考系下自动适配高分屏）
+            t.fontSize = Mathf.Max(16, Mathf.RoundToInt(size.x * 0.155f));
             t.color = Color.white;
             t.alignment = TextAnchor.MiddleCenter;
             t.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
@@ -145,23 +155,27 @@ namespace PixelArena
             if (!GameInput.TouchMode) return;
 
             float w = Screen.width;
+            // Canvas 用 ScaleWithScreenSize 后 Canvas 坐标 ≠ 屏幕像素，触点必须换算
+            float sf = Canvas != null && Canvas.scaleFactor > 0f ? Canvas.scaleFactor : 1f;
             bool moveActive = false;
 
             for (int i = 0; i < Input.touchCount; i++)
             {
                 Touch touch = Input.GetTouch(i);
+                Vector2 p = touch.position / sf;   // 屏幕像素 → Canvas 坐标
 
                 if (touch.fingerId == moveFinger)
                 {
                     if (touch.phase == TouchPhase.Ended || touch.phase == TouchPhase.Canceled)
                     {
                         moveFinger = -1;
-                        JoystickBase.gameObject.SetActive(false);
                         GameInput.TouchMoveAxis = Vector2.zero;
                         GameInput.TouchSprint = false;
+                        JoystickKnob.rectTransform.anchoredPosition = Vector2.zero;
+                        JoystickBase.rectTransform.anchoredPosition = JoyHome;   // 回待机位（常驻显示）
                         continue;
                     }
-                    Vector2 d = touch.position - joystickCenter;
+                    Vector2 d = p - joystickCenter;
                     float len = d.magnitude;
                     if (len > JoyRadius) d = d / len * JoyRadius;
                     Vector2 axis = d / JoyRadius;
@@ -177,15 +191,14 @@ namespace PixelArena
                     if (touch.position.x < w * 0.45f && !IsOverButton(touch.position))
                     {
                         moveFinger = touch.fingerId;
-                        joystickCenter = touch.position;
-                        JoystickBase.rectTransform.anchoredPosition = touch.position;
+                        joystickCenter = p;
+                        JoystickBase.rectTransform.anchoredPosition = p;
                         JoystickKnob.rectTransform.anchoredPosition = Vector2.zero;
-                        JoystickBase.gameObject.SetActive(true);
                         continue;
                     }
                 }
 
-                // 右侧拖动 = 转视角（不包含按钮区域与移动摇杆）
+                // 右侧拖动 = 转视角（不包含按钮区域与移动摇杆；delta 用屏幕像素，灵敏度与旧版一致）
                 if (touch.fingerId != moveFinger && !IsOverButton(touch.position) && touch.position.x >= w * 0.35f)
                 {
                     GameInput.TouchLookDelta += touch.deltaPosition;
